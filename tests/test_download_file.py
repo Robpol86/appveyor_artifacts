@@ -10,7 +10,8 @@ from appveyor_artifacts import download_file, HandledError
 
 
 @pytest.mark.httpretty
-def test_success(capsys, tmpdir):
+@pytest.mark.parametrize('subdir', ['', 'dist'])
+def test_success(capsys, tmpdir, subdir):
     """No errors."""
     # Prepare requests module mocking.
     source_file = py.path.local(__file__).dirpath().join('..', 'appveyor_artifacts.py')
@@ -18,7 +19,10 @@ def test_success(capsys, tmpdir):
     httpretty.register_uri(httpretty.GET, url, body=iter(source_file.readlines()), streaming=True)
 
     # Run.
-    local_path = tmpdir.join('appveyor_artifacts.py')
+    if subdir:
+        local_path = tmpdir.join(subdir, 'appveyor_artifacts.py')
+    else:
+        local_path = tmpdir.join('appveyor_artifacts.py')
     download_file(str(local_path), url, source_file.size(), 1024)
 
     # Check.

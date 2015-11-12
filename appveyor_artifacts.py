@@ -478,6 +478,10 @@ def download_file(local_path, url, expected_size, chunk_size, log):
 
     # Download file.
     log.debug('Writing to: %s', local_path)
+    local_directory = os.path.dirname(local_path)
+    if not os.path.exists(local_directory):
+        log.debug('Creating directory: %s', local_directory)
+        os.makedirs(local_directory)
     with open(local_path, 'wb') as handle:
         response = requests.get(url, stream=True)
         for chunk in response.iter_content(chunk_size):
