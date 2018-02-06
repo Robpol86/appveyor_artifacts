@@ -15,12 +15,12 @@ def test_instant_success(monkeypatch, artifacts):
     :param monkeypatch: pytest fixture.
     :param bool artifacts: If simulation should have or lack artifacts.
     """
-    monkeypatch.setattr('appveyor_artifacts.query_build_version', lambda _: '1.0.1')
+    monkeypatch.setattr('appveyor_artifacts.query_build_version', lambda *_: '1.0.1')
     monkeypatch.setattr('appveyor_artifacts.query_job_ids', lambda *_: [('abc1def2ghi3jkl4', 'success')])
     monkeypatch.setattr('appveyor_artifacts.query_artifacts',
-                        lambda _: [('abc1def2ghi3jkl4', 'README.md', 1234)] if artifacts else [])
+                        lambda *_: [('abc1def2ghi3jkl4', 'README.md', 1234)] if artifacts else [])
 
-    config = dict(always_job_dirs=False, no_job_dirs=None, dir=None)
+    config = dict(always_job_dirs=False, no_job_dirs=None, dir=None, token='')
     actual = get_urls(config)
     expected = {py.path.local('README.md'): (PREFIX % ('abc1def2ghi3jkl4', 'README.md'), 1234)} if artifacts else dict()
     assert actual == expected
@@ -36,9 +36,9 @@ def test_wait_for_job_queue(monkeypatch, caplog, timeout):
     """
     answers = [None, '1.0.1']
     monkeypatch.setattr('appveyor_artifacts.SLEEP_FOR', 0.01)
-    monkeypatch.setattr('appveyor_artifacts.query_build_version', lambda _: None if timeout else answers.pop(0))
+    monkeypatch.setattr('appveyor_artifacts.query_build_version', lambda *_: None if timeout else answers.pop(0))
     monkeypatch.setattr('appveyor_artifacts.query_job_ids', lambda *_: [('abc1def2ghi3jkl4', 'success')])
-    monkeypatch.setattr('appveyor_artifacts.query_artifacts', lambda _: list())
+    monkeypatch.setattr('appveyor_artifacts.query_artifacts', lambda *_: list())
 
     if timeout:
         with pytest.raises(HandledError):
@@ -66,11 +66,11 @@ def test_queued_running_success_or_failed(monkeypatch, caplog, success):
     """
     answers = (['bad'] if success is None else []) + ['queued', 'running'] + (['success'] if success else ['failed'])
     monkeypatch.setattr('appveyor_artifacts.SLEEP_FOR', 0.01)
-    monkeypatch.setattr('appveyor_artifacts.query_build_version', lambda _: '1.0.1')
+    monkeypatch.setattr('appveyor_artifacts.query_build_version', lambda *_: '1.0.1')
     monkeypatch.setattr('appveyor_artifacts.query_job_ids', lambda *_: [('abc1def2ghi3jkl4', answers.pop(0))])
-    monkeypatch.setattr('appveyor_artifacts.query_artifacts', lambda _: [('abc1def2ghi3jkl4', 'README.md', 1234)])
+    monkeypatch.setattr('appveyor_artifacts.query_artifacts', lambda *_: [('abc1def2ghi3jkl4', 'README.md', 1234)])
 
-    config = dict(always_job_dirs=False, no_job_dirs=None, dir=None, owner='me', repo='project')
+    config = dict(always_job_dirs=False, no_job_dirs=None, dir=None, owner='me', repo='project', token='')
     if not success:
         with pytest.raises(HandledError):
             get_urls(config)

@@ -5,10 +5,11 @@ from functools import partial
 from appveyor_artifacts import query_artifacts
 
 
-def mock_query_api(url, replies):
+def mock_query_api(url, token, replies):
     """Mock JSON replies.
 
     :param str url: Url as key.
+    :param str token: Token; ignored
     :param dict replies: Mock replies from test functions.
     """
     return replies[url]
@@ -19,9 +20,13 @@ def test(monkeypatch):
 
     :param monkeypatch: pytest fixture.
     """
+    config = dict(
+        token='',
+    )
+
     # Test empty.
-    monkeypatch.setattr('appveyor_artifacts.query_api', lambda _: list())
-    assert query_artifacts(['spfxkimxcj6faq57']) == list()
+    monkeypatch.setattr('appveyor_artifacts.query_api', lambda _, **kwargs: list())
+    assert query_artifacts(['spfxkimxcj6faq57'], config) == list()
 
     # Test multiple jobs.
     replies = {
@@ -38,8 +43,9 @@ def test(monkeypatch):
             {'fileName': 'no_ext', 'size': 101, 'type': 'File'},
         ],
     }
+
     monkeypatch.setattr('appveyor_artifacts.query_api', partial(mock_query_api, replies=replies))
-    actual = query_artifacts(['v5wnn9k8auqcqovw', 'bpgcbvqmawv1jw06'])
+    actual = query_artifacts(['v5wnn9k8auqcqovw', 'bpgcbvqmawv1jw06'], config)
 
     expected = [
         ('v5wnn9k8auqcqovw', 'luajit.exe', 675840),

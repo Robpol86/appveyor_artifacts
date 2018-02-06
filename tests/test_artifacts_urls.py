@@ -165,9 +165,9 @@ def test_subdirectory():
     actual = artifacts_urls(config, jobs_artifacts)
     expected = dict([
         (py.path.local('src/OutputRoot/PackageWeb.1.1.17.nupkg'),
-         (API_PREFIX + '/buildjobs/r97evl3jva2ejs6b/artifacts/src/OutputRoot/PackageWeb.1.1.17.nupkg', 60301)),
+         (API_PREFIX + '/buildjobs/r97evl3jva2ejs6b/artifacts/src%2FOutputRoot%2FPackageWeb.1.1.17.nupkg', 60301)),
         (py.path.local('src/OutputRoot/PackageWeb.1.1.10.nupkg'),
-         (API_PREFIX + '/buildjobs/s97evl3jva2ejs6b/artifacts/src/OutputRoot/PackageWeb.1.1.10.nupkg', 50301)),
+         (API_PREFIX + '/buildjobs/s97evl3jva2ejs6b/artifacts/src%2FOutputRoot%2FPackageWeb.1.1.10.nupkg', 50301)),
     ])
     assert actual == expected
 
