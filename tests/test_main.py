@@ -172,7 +172,7 @@ def test_large_files(capsys, monkeypatch, tmpdir, caplog):
     assert stderr == expected
 
 
-@pytest.mark.skipif((os.environ.get("CI") == True) and (os.environ.get("TRAVIS") == True), reason='on CI')
+@pytest.mark.skipif((os.environ.get("CI") == 'true') and (os.environ.get("TRAVIS") == 'true'), reason='on CI')
 @pytest.mark.parametrize('direct', [False, True])
 def test_subprocess(tmpdir, direct):
     """Test executing script through entry_points and directly.
