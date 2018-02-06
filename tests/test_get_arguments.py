@@ -37,6 +37,7 @@ def different_cli_argv():
         'raise': False,
         'repo': '',
         'tag': '',
+        'token': '',
         'verbose': False,
     }
     yield argv, expected
@@ -62,6 +63,7 @@ def different_cli_argv():
         'raise': False,
         'repo': 'koala',
         'tag': 'v1.0.0',
+        'token': '',
         'verbose': False,
         'ignore_errors': False,
     }
@@ -74,6 +76,7 @@ def different_cli_argv():
         '-J', 'overwrite',
         '-m',
         '-N', r'Environment: PYTHON=C:\Python27',
+        '-s', 'aSecret',
         '-v',
     ]
     expected = {
@@ -89,6 +92,7 @@ def different_cli_argv():
         'raise': False,
         'repo': '',
         'tag': '',
+        'token': 'aSecret',
         'verbose': True,
     }
     yield argv, expected

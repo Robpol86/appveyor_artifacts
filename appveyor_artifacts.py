@@ -193,6 +193,7 @@ def get_arguments(argv=None, environ=None):
         'raise': args['--raise'],
         'repo': repo,
         'tag': tag,
+        'token': args['--token'] or '',
         'verbose': args['--verbose'],
     }
 
