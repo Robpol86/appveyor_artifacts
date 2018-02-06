@@ -53,6 +53,7 @@ import time
 import pkg_resources
 import requests
 import requests.exceptions
+import requests.utils
 from docopt import docopt
 
 __author__ = '@Robpol86'
@@ -423,7 +424,8 @@ def artifacts_urls(config, jobs_artifacts, log):
     # Get final URLs and destination file paths.
     root_dir = config['dir'] or os.getcwd()
     for job, file_name, size in jobs_artifacts:
-        artifact_url = '{0}/buildjobs/{1}/artifacts/{2}'.format(API_PREFIX, job, file_name)
+        file_name_urlsafe = requests.utils.quote(file_name, safe='')
+        artifact_url = '{0}/buildjobs/{1}/artifacts/{2}'.format(API_PREFIX, job, file_name_urlsafe)
         artifact_local = os.path.join(root_dir, job if job_dirs else '', file_name)
         if artifact_local in artifacts:
             if config['no_job_dirs'] == 'skip':
