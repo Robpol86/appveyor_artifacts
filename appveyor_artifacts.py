@@ -33,6 +33,7 @@ Options:
     -N JOB --job-name=JOB       Filter by job name (Python versions, etc).
     -o NAME --owner-name=NAME   Repository owner/account name.
     -p NUM --pull-request=NUM   Pull request number of current job.
+    -s TOKEN --token=TOKEN      AppVeyor API token
     -r --raise                  Don't handle exceptions, raise all the way.
     -t NAME --tag-name=NAME     Tag name that triggered current job.
     -v --verbose                Raise exceptions with tracebacks.
