@@ -23,7 +23,8 @@ def test_success(capsys, tmpdir):
 
     # Run.
     local_path = tmpdir.join('appveyor_artifacts.py')
-    download_file(dict(dir=str(tmpdir)), str(local_path), url, source_file.size(), 1024)
+    config = dict(dir=str(tmpdir), token='')
+    download_file(config, str(local_path), url, source_file.size(), 1024)
 
     # Check.
     assert local_path.size() == source_file.size()
@@ -47,7 +48,8 @@ def test_success_subdir(capsys, tmpdir):
 
     # Run.
     local_path = tmpdir.join('src', 'files', 'appveyor_artifacts.py')
-    download_file(dict(dir=str(tmpdir)), str(local_path), url, source_file.size(), 1024)
+    config = dict(dir=str(tmpdir), token='')
+    download_file(config, str(local_path), url, source_file.size(), 1024)
 
     # Check.
     assert local_path.size() == source_file.size()
@@ -70,11 +72,13 @@ def test_errors(tmpdir, caplog, file_exists):
     url = 'https://ci.appveyor.com/api/buildjobs/abc1def2ghi3jkl4/artifacts/appveyor_artifacts.py'
     httpretty.register_uri(httpretty.GET, url, body=iter(source_file.readlines()), streaming=True)
 
+    config = dict(dir=str(tmpdir), token='')
+
     local_path = tmpdir.join('appveyor_artifacts.py')
     if file_exists:
         local_path.ensure()
     with pytest.raises(HandledError):
-        download_file(dict(dir=str(tmpdir)), str(local_path), url, source_file.size() + 32, 1024)
+        download_file(config, str(local_path), url, source_file.size() + 32, 1024)
 
     if file_exists:
         assert caplog.records[-2].message == 'File already exists: ' + str(local_path)

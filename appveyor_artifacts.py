@@ -519,10 +519,15 @@ def download_file(config, local_path, url, expected_size, chunk_size, log):
     relative_path = os.path.relpath(local_path, config['dir'] or os.getcwd())
     print(' => {0}'.format(relative_path), end=' ', file=sys.stderr)
 
+    headers = {}
+    if config['token']:
+        headers['authorization'] = 'Bearer ' + config['token']
+
     # Download file.
     log.debug('Writing to: %s', local_path)
     with open(local_path, 'wb') as handle:
-        response = requests.get(url, stream=True)
+
+        response = requests.get(url, headers=headers, stream=True)
         for chunk in response.iter_content(chunk_size):
             handle.write(chunk)
             print('.', end='', file=sys.stderr)
