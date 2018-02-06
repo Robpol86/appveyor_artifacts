@@ -201,19 +201,22 @@ def get_arguments(argv=None, environ=None):
 
 
 @with_log
-def query_api(endpoint, log):
+def query_api(endpoint, log, token=None):
     """Query the AppVeyor API.
 
     :raise HandledError: On non HTTP200 responses or invalid JSON response.
 
     :param str endpoint: API endpoint to query (e.g. '/projects/Robpol86/appveyor-artifacts').
     :param logging.Logger log: Logger for this function. Populated by with_log() decorator.
+    :param dict token: API token. Optional
 
     :return: Parsed JSON response.
     :rtype: dict
     """
     url = API_PREFIX + endpoint
     headers = {'content-type': 'application/json'}
+    if token is not None:
+        headers['authorization'] = 'Bearer ' + token
     response = None
     log.debug('Querying %s with headers %s.', url, headers)
     for i in range(QUERY_ATTEMPTS):
@@ -308,7 +311,7 @@ def query_build_version(config, log):
 
     # Query history.
     log.debug('Querying AppVeyor history API for %s/%s...', config['owner'], config['repo'])
-    json_data = query_api(url)
+    json_data = query_api(url, token=config['token'])
     if 'builds' not in json_data:
         log.error('Bad JSON reply: "builds" key missing.')
         raise HandledError
@@ -347,7 +350,7 @@ def query_job_ids(build_version, config, log):
 
     # Query version.
     log.debug('Querying AppVeyor version API for %s/%s at %s...', config['owner'], config['repo'], build_version)
-    json_data = query_api(url)
+    json_data = query_api(url, token=config['token'])
     if 'build' not in json_data:
         log.error('Bad JSON reply: "build" key missing.')
         raise HandledError
@@ -369,10 +372,11 @@ def query_job_ids(build_version, config, log):
 
 
 @with_log
-def query_artifacts(job_ids, log):
+def query_artifacts(job_ids, config, log):
     """Query API again for artifacts.
 
     :param iter job_ids: List of AppVeyor jobIDs.
+    :param dict config: Dictionary from get_arguments().
     :param logging.Logger log: Logger for this function. Populated by with_log() decorator.
 
     :return: List of tuples: (job ID, artifact file name, artifact file size).
@@ -382,7 +386,7 @@ def query_artifacts(job_ids, log):
     for job in job_ids:
         url = '/buildjobs/{0}/artifacts'.format(job)
         log.debug('Querying AppVeyor artifact API for %s...', job)
-        json_data = query_api(url)
+        json_data = query_api(url, token=config['token'])
         for artifact in json_data:
             jobs_artifacts.append((job, artifact['fileName'], artifact['size']))
     return jobs_artifacts
@@ -488,7 +492,7 @@ def get_urls(config, log):
         time.sleep(SLEEP_FOR)
 
     # Get artifacts.
-    artifacts = query_artifacts([i[0] for i in job_ids])
+    artifacts = query_artifacts([i[0] for i in job_ids], config)
     log.info('Found %d artifact%s.', len(artifacts), '' if len(artifacts) == 1 else 's')
     return artifacts_urls(config, artifacts) if artifacts else dict()
 

@@ -7,10 +7,11 @@ import pytest
 from appveyor_artifacts import HandledError, query_build_version
 
 
-def mock_query_api(url, replies):
+def mock_query_api(url, token, replies):
     """Mock JSON replies.
 
     :param str url: Url as key.
+    :param str token: Token; ignored
     :param dict replies: Mock replies from test functions.
     """
     return replies[url]
@@ -43,6 +44,7 @@ def test_success(monkeypatch, caplog, kind):
         pull_request='12' if kind == 'pull request' else '',
         repo='repo',
         tag='v2.0.0' if kind == 'tag' else '',
+        token='',
     )
 
     actual = query_build_version(config)
@@ -82,6 +84,7 @@ def test_empty(monkeypatch):
         pull_request=None,
         repo='repo',
         tag='',
+        token='',
     )
 
     actual = query_build_version(config)
@@ -113,6 +116,7 @@ def test_errors(monkeypatch, caplog):
         pull_request=None,
         repo='repo',
         tag='',
+        token='',
     )
 
     with pytest.raises(HandledError):

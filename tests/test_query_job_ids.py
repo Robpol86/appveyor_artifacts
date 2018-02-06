@@ -7,10 +7,11 @@ import pytest
 from appveyor_artifacts import HandledError, query_job_ids
 
 
-def mock_query_api(url, replies):
+def mock_query_api(url, token, replies):
     """Mock JSON replies.
 
     :param str url: Url as key.
+    :param str token: Token; ignored
     :param dict replies: Mock replies from test functions.
     """
     return replies[url]
@@ -29,7 +30,7 @@ def test_no_name(monkeypatch):
     monkeypatch.setattr('appveyor_artifacts.query_api', partial(mock_query_api, replies=replies))
 
     build_version = '1.0.239'
-    config = dict(job_name='', owner='Robpol86', repo='terminaltables')
+    config = dict(job_name='', owner='Robpol86', repo='terminaltables', token='')
 
     actual = query_job_ids(build_version, config)
     expected = [('ocw0l628ww5yqqxy', 'success')]
@@ -57,7 +58,7 @@ def test_multiple_jobs(monkeypatch, caplog, job_name):
     monkeypatch.setattr('appveyor_artifacts.query_api', partial(mock_query_api, replies=replies))
 
     build_version = '1.0.9'
-    config = dict(job_name=job_name, owner='Robpol86', repo='flask-statics-helper')
+    config = dict(job_name=job_name, owner='Robpol86', repo='flask-statics-helper', token='')
 
     actual = query_job_ids(build_version, config)
     if job_name:
@@ -92,7 +93,7 @@ def test_errors(monkeypatch, caplog):
     monkeypatch.setattr('appveyor_artifacts.query_api', partial(mock_query_api, replies=replies))
 
     build_version = '1.6.0.43'
-    config = dict(job_name='unknown', owner='user', repo='repo')
+    config = dict(job_name='unknown', owner='user', repo='repo', token='')
 
     with pytest.raises(HandledError):
         query_job_ids(build_version, config)
