@@ -8,6 +8,7 @@ import os
 import re
 import signal
 import sys
+import platform
 import time
 
 import pkg_resources
@@ -50,7 +51,7 @@ class InfoFilter(logging.Filter):
         return record.levelno <= logging.INFO
 
 
-def setup_logging(verbose=False, logger=None):
+def setup_logging(verbose=False, logger=None, onlyStdErr=False):
     """Setup console logging. Info and below go to stdout, others go to stderr.
 
     :param bool verbose: Print debug statements.
@@ -61,8 +62,13 @@ def setup_logging(verbose=False, logger=None):
 
     format_ = '%(asctime)s %(levelname)-8s %(name)-40s %(message)s' if verbose else '%(message)s'
     level = logging.DEBUG if verbose else logging.INFO
-
-    handler_stdout = logging.StreamHandler(sys.stdout)
+    
+    if onlyStdErr:
+        stoutLoggerStream=sys.stderr
+    else:
+        stoutLoggerStream=sys.stdout
+    
+    handler_stdout = logging.StreamHandler(stoutLoggerStream)
     handler_stdout.setFormatter(logging.Formatter(format_))
     handler_stdout.setLevel(logging.DEBUG)
     handler_stdout.addFilter(InfoFilter())
@@ -367,6 +373,39 @@ def get_urls(config, log):
     log.info('Found %d artifact%s.', len(artifacts), '' if len(artifacts) == 1 else 's')
     return artifacts_urls(config, artifacts) if artifacts else dict()
 
+class CommandsGenerator:
+	def quote(self, input:str):
+		return shlex.quote(str(input))
+	
+	def echo(self, input:str):
+		return "echo "+shlex.quote(str(input))
+
+specChar=re.compile("\\W")
+
+class CommandsGeneratorWin(CommandsGenerator):
+	"""A class to create shell commands. Create another class for other platforms"""
+	
+	def echo(self, input:str):
+		return 'echo '+specChar.subn("^\\g<0>", input)[0]
+	
+	def quote(self, input:str):
+		#shlex.quote works incorrectly on Windows
+		return '"'+str(input).replace('"', '""')+'"'
+
+if platform.system() == 'Windows':
+	commandGen=CommandsGeneratorWin()
+else:
+	commandGen=CommandsGenerator()
+
+def genDownloadCommand(uris, destFolder, streamsCount=32, type="aria2"):
+	streamsCount=str(streamsCount)
+	
+	if type == "aria2":
+		return " ".join(("(\n"+"\n".join((commandGen.echo(uri) for uri in uris))+"\n)", "|", "aria2c", "--continue=true", "--enable-mmap=true", "--optimize-concurrent-downloads=true", "-j", streamsCount, "-x 16", "-d", str(destFolder), "--input-file=-"))
+	else:
+		args=["curl", "-C", "-", "--location", "--remote-name", "--remote-name-all", "--xattr"]
+		args.extend(uris)
+		return " ".join(args)
 
 @with_log
 def download_file(config, local_path, url, expected_size, chunk_size, log):
@@ -388,6 +427,10 @@ def download_file(config, local_path, url, expected_size, chunk_size, log):
     relative_path = os.path.relpath(local_path, config.dir or os.getcwd())
     print(' => {0}'.format(relative_path), end=' ', file=sys.stderr)
 
+    if config.externalDownloader:
+        print(genDownloadCommand((url,), local_path, config.streamsCount, type=config.externalDownloader))
+        return
+    
     # Download file.
     log.debug('Writing to: %s', local_path)
     with open(local_path, 'wb') as handle:
@@ -457,8 +500,9 @@ def main(config, log):
         total_size += size
         if config.mangle_coverage:
             mangle_coverage(local_path)
-
-    log.info('Downloaded %d file(s), %d bytes total.', len(paths_and_urls), total_size)
+    
+    if not config.externalDownloader:
+        log.info('Downloaded %d file(s), %d bytes total.', len(paths_and_urls), total_size)
 
 from plumbum import cli
 
@@ -513,12 +557,15 @@ class AppCLI(cli.Application):
     verbose=cli.Flag(["v", "verbose"], help = "Show debug output")
     exRaise=cli.Flag(["r", "raise"], help = "Don't handle exceptions, raise all the way.")
     
+    externalDownloader=cli.SwitchAttr("--externalDownloader", cli.switches.Set("aria2", "curl"), default=None, help="Set it to generate a cli command to download the stuff")
+    streamsCount=cli.SwitchAttr("--streamsCount", int, default=32, help="Max count of streams for aria2c")
+    
     def main(self):
         """Entry-point from setuptools."""
         signal.signal(signal.SIGINT, lambda *_: getattr(os, '_exit')(0))  # Properly handle Control+C
         
         config = self
-        setup_logging(config.verbose)
+        setup_logging(config.verbose, onlyStdErr=bool(self.externalDownloader))
         try:
             main(config)
         except HandledError:
