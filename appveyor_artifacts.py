@@ -1,43 +1,4 @@
-#!/usr/bin/env python
-r"""Download artifacts from AppVeyor builds of the same commit/pull request.
-
-This tool is mainly used to download a ".coverage" file from AppVeyor to
-combine it with the one in Travis (since Coveralls doesn't support multi-ci
-code coverage). However this can be used to download any artifact from an
-AppVeyor project.
-
-If your project creates multiple jobs for one commit (e.g. different Python
-versions, or a matrix in either yaml file), you can use the `--job-name`
-option to get artifacts matching your local environment. Example:
-appveyor-artifacts --job-name="Environment: PYTHON=C:\Python27" download
-
-https://github.com/Robpol86/appveyor-artifacts
-https://pypi.python.org/pypi/appveyor-artifacts
-
-Usage:
-    appveyor-artifacts [options] download
-    appveyor-artifacts -h | --help
-    appveyor-artifacts -V | --version
-
-Options:
-    -C DIR --dir=DIR            Download to DIR instead of cwd.
-    -c SHA --commit=SHA         Git commit currently building.
-    -h --help                   Show this screen.
-    -i --ignore-errors          Exit 0 on errors.
-    -j --always-job-dirs        Always download files within ./<jobID>/ dirs.
-    -J MODE --no-job-dirs=MODE  All jobs download to same directory. Modes for
-                                file path collisions: rename, overwrite, skip
-    -m --mangle-coverage        Edit downloaded .coverage file(s) replacing
-                                Windows paths with Linux paths.
-    -n NAME --repo-name=NAME    Repository name.
-    -N JOB --job-name=JOB       Filter by job name (Python versions, etc).
-    -o NAME --owner-name=NAME   Repository owner/account name.
-    -p NUM --pull-request=NUM   Pull request number of current job.
-    -r --raise                  Don't handle exceptions, raise all the way.
-    -t NAME --tag-name=NAME     Tag name that triggered current job.
-    -v --verbose                Raise exceptions with tracebacks.
-    -V --version                Print appveyor-artifacts version.
-"""
+#!/usr/bin/env python3
 
 from __future__ import print_function
 
@@ -47,12 +8,13 @@ import os
 import re
 import signal
 import sys
+import platform
 import time
 
 import pkg_resources
 import requests
 import requests.exceptions
-from docopt import docopt
+from plumbum import cli
 
 __author__ = '@Robpol86'
 __license__ = 'MIT'
@@ -89,7 +51,7 @@ class InfoFilter(logging.Filter):
         return record.levelno <= logging.INFO
 
 
-def setup_logging(verbose=False, logger=None):
+def setup_logging(verbose=False, logger=None, onlyStdErr=False):
     """Setup console logging. Info and below go to stdout, others go to stderr.
 
     :param bool verbose: Print debug statements.
@@ -100,8 +62,13 @@ def setup_logging(verbose=False, logger=None):
 
     format_ = '%(asctime)s %(levelname)-8s %(name)-40s %(message)s' if verbose else '%(message)s'
     level = logging.DEBUG if verbose else logging.INFO
-
-    handler_stdout = logging.StreamHandler(sys.stdout)
+    
+    if onlyStdErr:
+        stoutLoggerStream=sys.stderr
+    else:
+        stoutLoggerStream=sys.stdout
+    
+    handler_stdout = logging.StreamHandler(stoutLoggerStream)
     handler_stdout.setFormatter(logging.Formatter(format_))
     handler_stdout.setLevel(logging.DEBUG)
     handler_stdout.addFilter(InfoFilter())
@@ -140,62 +107,6 @@ def with_log(func):
             decorator_logger.debug('Leaving %s() function call.', func.__name__)
         return ret
     return wrapper
-
-
-def get_arguments(argv=None, environ=None):
-    """Get command line arguments or values from environment variables.
-
-    :param list argv: Command line argument list to process. For testing.
-    :param dict environ: Environment variables. For testing.
-
-    :return: Parsed options.
-    :rtype: dict
-    """
-    name = 'appveyor-artifacts'
-    environ = environ or os.environ
-    require = getattr(pkg_resources, 'require')  # Stupid linting error.
-    commit, owner, pull_request, repo, tag = '', '', '', '', ''
-
-    # Run docopt.
-    project = [p for p in require(name) if p.project_name == name][0]
-    version = project.version
-    args = docopt(__doc__, argv=argv or sys.argv[1:], version=version)
-
-    # Handle Travis environment variables.
-    if environ.get('TRAVIS') == 'true':
-        commit = environ.get('TRAVIS_COMMIT', '')
-        owner = environ.get('TRAVIS_REPO_SLUG', '/').split('/')[0]
-        pull_request = environ.get('TRAVIS_PULL_REQUEST', '')
-        if pull_request == 'false':
-            pull_request = ''
-        repo = environ.get('TRAVIS_REPO_SLUG', '/').split('/')[1].replace('_', '-')
-        tag = environ.get('TRAVIS_TAG', '')
-
-    # Command line arguments override.
-    commit = args['--commit'] or commit
-    owner = args['--owner-name'] or owner
-    pull_request = args['--pull-request'] or pull_request
-    repo = args['--repo-name'] or repo
-    tag = args['--tag-name'] or tag
-
-    # Merge env variables and have command line args override.
-    config = {
-        'always_job_dirs': args['--always-job-dirs'],
-        'commit': commit,
-        'dir': args['--dir'] or '',
-        'ignore_errors': args['--ignore-errors'],
-        'job_name': args['--job-name'] or '',
-        'mangle_coverage': args['--mangle-coverage'],
-        'no_job_dirs': args['--no-job-dirs'] or '',
-        'owner': owner,
-        'pull_request': pull_request,
-        'raise': args['--raise'],
-        'repo': repo,
-        'tag': tag,
-        'verbose': args['--verbose'],
-    }
-
-    return config
 
 
 @with_log
@@ -249,42 +160,6 @@ def query_api(endpoint, log):
         log.error('Failed to parse JSON: %s', response.text)
         raise HandledError
 
-
-@with_log
-def validate(config, log):
-    """Validate config values.
-
-    :raise HandledError: On invalid config values.
-
-    :param dict config: Dictionary from get_arguments().
-    :param logging.Logger log: Logger for this function. Populated by with_log() decorator.
-    """
-    if config['always_job_dirs'] and config['no_job_dirs']:
-        log.error('Contradiction: --always-job-dirs and --no-job-dirs used.')
-        raise HandledError
-    if config['commit'] and not REGEX_COMMIT.match(config['commit']):
-        log.error('No or invalid git commit obtained.')
-        raise HandledError
-    if config['dir'] and not os.path.isdir(config['dir']):
-        log.error("Not a directory or doesn't exist: %s", config['dir'])
-        raise HandledError
-    if config['no_job_dirs'] not in ('', 'rename', 'overwrite', 'skip'):
-        log.error('--no-job-dirs has invalid value. Check --help for valid values.')
-        raise HandledError
-    if not config['owner'] or not REGEX_GENERAL.match(config['owner']):
-        log.error('No or invalid repo owner name obtained.')
-        raise HandledError
-    if config['pull_request'] and not config['pull_request'].isdigit():
-        log.error('--pull-request is not a digit.')
-        raise HandledError
-    if not config['repo'] or not REGEX_GENERAL.match(config['repo']):
-        log.error('No or invalid repo name obtained.')
-        raise HandledError
-    if config['tag'] and not REGEX_GENERAL.match(config['tag']):
-        log.error('Invalid git tag obtained.')
-        raise HandledError
-
-
 @with_log
 def query_build_version(config, log):
     """Find the build version we're looking for.
@@ -302,23 +177,31 @@ def query_build_version(config, log):
     :return: Build version.
     :rtype: str
     """
-    url = '/projects/{0}/{1}/history?recordsNumber=10'.format(config['owner'], config['repo'])
+    url = '/projects/{0}/{1}/history?recordsNumber=10'.format(config.owner, config.repo)
 
     # Query history.
-    log.debug('Querying AppVeyor history API for %s/%s...', config['owner'], config['repo'])
+    log.debug('Querying AppVeyor history API for %s/%s...', config.owner, config.repo)
     json_data = query_api(url)
     if 'builds' not in json_data:
         log.error('Bad JSON reply: "builds" key missing.')
         raise HandledError
 
+    selectLatest=not any((config.tag,config.pull_request,config.commit))
     # Find AppVeyor build "version".
     for build in json_data['builds']:
-        if config['tag'] and config['tag'] == build.get('tag'):
+        if config.tag and config.tag == build.get('tag'):
             log.debug('This is a tag build.')
-        elif config['pull_request'] and config['pull_request'] == build.get('pullRequestId'):
+        elif config.pull_request and config.pull_request == build.get('pullRequestId'):
             log.debug('This is a pull request build.')
-        elif config['commit'] == build['commitId']:
+        elif config.commit == build['commitId']:
             log.debug('This is a branch build.')
+        elif selectLatest:
+            if config.branch:
+                if config.branch != build['branch']:
+                    continue
+                log.debug('Selecting the latest commit on the branch '+str(config.branch))
+            else:
+                log.debug('Selecting the latest commit')
         else:
             continue
         log.debug('Build JSON dict: %s', str(build))
@@ -341,10 +224,10 @@ def query_job_ids(build_version, config, log):
     :return: List of two-item tuples. Job ID (first) and its status (second).
     :rtype: list
     """
-    url = '/projects/{0}/{1}/build/{2}'.format(config['owner'], config['repo'], build_version)
+    url = '/projects/{0}/{1}/build/{2}'.format(config.owner, config.repo, build_version)
 
     # Query version.
-    log.debug('Querying AppVeyor version API for %s/%s at %s...', config['owner'], config['repo'], build_version)
+    log.debug('Querying AppVeyor version API for %s/%s at %s...', config.owner, config.repo, build_version)
     json_data = query_api(url)
     if 'build' not in json_data:
         log.error('Bad JSON reply: "build" key missing.')
@@ -356,12 +239,12 @@ def query_job_ids(build_version, config, log):
     # Find AppVeyor job.
     all_jobs = list()
     for job in json_data['build']['jobs']:
-        if config['job_name'] and config['job_name'] == job['name']:
+        if config.job_name and config.job_name == job['name']:
             log.debug('Filtering by job name: found match!')
             return [(job['jobId'], job['status'])]
         all_jobs.append((job['jobId'], job['status']))
-    if config['job_name']:
-        log.error('Job name "%s" not found.', config['job_name'])
+    if config.job_name:
+        log.error('Job name "%s" not found.', config.job_name)
         raise HandledError
     return all_jobs
 
@@ -400,9 +283,9 @@ def artifacts_urls(config, jobs_artifacts, log):
     artifacts = dict()
 
     # Determine if we should create job ID directories.
-    if config['always_job_dirs']:
+    if config.always_job_dirs:
         job_dirs = True
-    elif config['no_job_dirs']:
+    elif config.no_job_dirs:
         job_dirs = False
     elif len(set(i[0] for i in jobs_artifacts)) == 1:
         log.debug('Only one job ID, automatically setting job_dirs = False.')
@@ -415,22 +298,22 @@ def artifacts_urls(config, jobs_artifacts, log):
         job_dirs = True
 
     # Get final URLs and destination file paths.
-    root_dir = config['dir'] or os.getcwd()
+    root_dir = config.dir or os.getcwd()
     for job, file_name, size in jobs_artifacts:
         artifact_url = '{0}/buildjobs/{1}/artifacts/{2}'.format(API_PREFIX, job, file_name)
         artifact_local = os.path.join(root_dir, job if job_dirs else '', file_name)
         if artifact_local in artifacts:
-            if config['no_job_dirs'] == 'skip':
+            if config.no_job_dirs == 'skip':
                 log.debug('Skipping %s from %s', artifact_local, artifact_url)
                 continue
-            if config['no_job_dirs'] == 'rename':
+            if config.no_job_dirs == 'rename':
                 new_name = artifact_local
                 while new_name in artifacts:
                     path, ext = os.path.splitext(new_name)
                     new_name = (path + '_' + ext) if ext else (new_name + '_')
                 log.debug('Renaming %s to %s from %s', artifact_local, new_name, artifact_url)
                 artifact_local = new_name
-            elif config['no_job_dirs'] == 'overwrite':
+            elif config.no_job_dirs == 'overwrite':
                 log.debug('Overwriting %s from %s with %s', artifact_local, artifacts[artifact_local][0], artifact_url)
             else:
                 log.error('Collision: %s from %s and %s', artifact_local, artifacts[artifact_local][0], artifact_url)
@@ -470,7 +353,7 @@ def get_urls(config, log):
         statuses = set([i[1] for i in job_ids])
         if 'failed' in statuses:
             job = [i[0] for i in job_ids if i[1] == 'failed'][0]
-            url = 'https://ci.appveyor.com/project/{0}/{1}/build/job/{2}'.format(config['owner'], config['repo'], job)
+            url = 'https://ci.appveyor.com/project/{0}/{1}/build/job/{2}'.format(config.owner, config.repo, job)
             log.error('AppVeyor job failed: %s', url)
             raise HandledError
         if statuses == set(valid_statuses[:1]):
@@ -490,6 +373,39 @@ def get_urls(config, log):
     log.info('Found %d artifact%s.', len(artifacts), '' if len(artifacts) == 1 else 's')
     return artifacts_urls(config, artifacts) if artifacts else dict()
 
+class CommandsGenerator:
+	def quote(self, input:str):
+		return shlex.quote(str(input))
+	
+	def echo(self, input:str):
+		return "echo "+shlex.quote(str(input))
+
+specChar=re.compile("\\W")
+
+class CommandsGeneratorWin(CommandsGenerator):
+	"""A class to create shell commands. Create another class for other platforms"""
+	
+	def echo(self, input:str):
+		return 'echo '+specChar.subn("^\\g<0>", input)[0]
+	
+	def quote(self, input:str):
+		#shlex.quote works incorrectly on Windows
+		return '"'+str(input).replace('"', '""')+'"'
+
+if platform.system() == 'Windows':
+	commandGen=CommandsGeneratorWin()
+else:
+	commandGen=CommandsGenerator()
+
+def genDownloadCommand(uris, destFolder, streamsCount=32, type="aria2"):
+	streamsCount=str(streamsCount)
+	
+	if type == "aria2":
+		return " ".join(("(\n"+"\n".join((commandGen.echo(uri) for uri in uris))+"\n)", "|", "aria2c", "--continue=true", "--enable-mmap=true", "--optimize-concurrent-downloads=true", "-j", streamsCount, "-x 16", "-d", str(destFolder), "--input-file=-"))
+	else:
+		args=["curl", "-C", "-", "--location", "--remote-name", "--remote-name-all", "--xattr"]
+		args.extend(uris)
+		return " ".join(args)
 
 @with_log
 def download_file(config, local_path, url, expected_size, chunk_size, log):
@@ -508,9 +424,13 @@ def download_file(config, local_path, url, expected_size, chunk_size, log):
     if os.path.exists(local_path):
         log.error('File already exists: %s', local_path)
         raise HandledError
-    relative_path = os.path.relpath(local_path, config['dir'] or os.getcwd())
+    relative_path = os.path.relpath(local_path, config.dir or os.getcwd())
     print(' => {0}'.format(relative_path), end=' ', file=sys.stderr)
 
+    if config.externalDownloader:
+        print(genDownloadCommand((url,), local_path, config.streamsCount, type=config.externalDownloader))
+        return
+    
     # Download file.
     log.debug('Writing to: %s', local_path)
     with open(local_path, 'wb') as handle:
@@ -566,7 +486,6 @@ def main(config, log):
     :param dict config: Dictionary from get_arguments().
     :param logging.Logger log: Logger for this function. Populated by with_log() decorator.
     """
-    validate(config)
     paths_and_urls = get_urls(config)
     if not paths_and_urls:
         log.warning('No artifacts; nothing to download.')
@@ -579,25 +498,82 @@ def main(config, log):
     for size, local_path, url in sorted((v[1], k, v[0]) for k, v in paths_and_urls.items()):
         download_file(config, local_path, url, size, chunk_size)
         total_size += size
-        if config['mangle_coverage']:
+        if config.mangle_coverage:
             mangle_coverage(local_path)
+    
+    if not config.externalDownloader:
+        log.info('Downloaded %d file(s), %d bytes total.', len(paths_and_urls), total_size)
 
-    log.info('Downloaded %d file(s), %d bytes total.', len(paths_and_urls), total_size)
+from plumbum import cli
+
+def RegExpValidator(rx):
+    @cli.switches.Predicate
+    def RegExpValidator(val):
+        if rx.match(val):
+            return val
+    return RegExpValidator
+
+CommitValidator=RegExpValidator(REGEX_COMMIT)
+IdentifierValidator=RegExpValidator(REGEX_GENERAL)
 
 
-def entry_point():
-    """Entry-point from setuptools."""
-    signal.signal(signal.SIGINT, lambda *_: getattr(os, '_exit')(0))  # Properly handle Control+C
-    config = get_arguments()
-    setup_logging(config['verbose'])
-    try:
-        main(config)
-    except HandledError:
-        if config['raise']:
-            raise
-        logging.critical('Failure.')
-        sys.exit(0 if config['ignore_errors'] else 1)
+
+class AppCLI(cli.Application):
+    r"""Download artifacts from AppVeyor builds of the same commit/pull request.
+
+    This tool is mainly used to download a ".coverage" file from AppVeyor to
+    combine it with the one in Travis (since Coveralls doesn't support multi-ci
+    code coverage). However this can be used to download any artifact from an
+    AppVeyor project.
+
+    If your project creates multiple jobs for one commit (e.g. different Python
+    versions, or a matrix in either yaml file), you can use the `--job-name`
+    option to get artifacts matching your local environment. Example:
+    appveyor-artifacts --job-name="Environment: PYTHON=C:\Python27" download
+
+    https://github.com/Robpol86/appveyor-artifacts
+    https://pypi.python.org/pypi/appveyor-artifacts
+    """
+    USAGE="""
+        appveyor-artifacts [options] download
+        appveyor-artifacts -h | --help
+        appveyor-artifacts -V | --version
+    """
+    owner=cli.SwitchAttr(["o", "owner-name"], argtype=IdentifierValidator, default=None, list=False, argname='NAME', help="Repository owner/account name.", mandatory = True)
+    repo=cli.SwitchAttr(["n", "repo-name"], argtype=IdentifierValidator, default=None, list=False, argname='NAME', help="Repository name.", mandatory = True)
+    
+    tag=cli.SwitchAttr(["t", "tag-name"], argtype=IdentifierValidator, default=None, list=False, argname='NAME', help="Tag name that triggered current job.")
+    job_name=cli.SwitchAttr(["N", "job-name"], argtype=str, default=None, list=False, argname='JOB', help="Filter by job name (Python versions, etc).")
+    pull_request=cli.SwitchAttr(["p", "pull-request"], argtype=int, default=None, list=False, argname='NUM', help="Pull request number of current job.")
+    branch=cli.SwitchAttr(["b", "branch"], argtype=CommitValidator, default=None, list=False, argname='SHA', help="Filter by branch")
+    commit=cli.SwitchAttr(["c", "commit"], argtype=CommitValidator, default=None, list=False, argname='SHA', help="Git commit currently building.")
+    
+    mangle_coverage=cli.Flag(["m", "mangle-coverage"], help = "Edit downloaded .coverage file(s) replacing Windows paths with Linux paths.")
+    dir=cli.SwitchAttr(["C", "dir"], argtype=cli.switches.MakeDirectory, default=".", list=False, argname='DIR', help="Download to DIR instead of cwd.")
+    no_job_dirs=cli.SwitchAttr(["J", "no-job-dirs"], argtype=cli.switches.Set("rename", "overwrite", "skip"), default=None, list=False, argname='MODE', help="All jobs download to same directory.", excludes = ["always-job-dirs"])
+    always_job_dirs=cli.Flag(["j", "always-job-dirs"], help = "Always download files within ./<jobID>/ dirs", excludes = ["no-job-dirs"])
+    
+    ignore_errors=cli.Flag(["i", "ignore-errors"], help = "Exit 0 on errors.")
+    verbose=cli.Flag(["v", "verbose"], help = "Show debug output")
+    exRaise=cli.Flag(["r", "raise"], help = "Don't handle exceptions, raise all the way.")
+    
+    externalDownloader=cli.SwitchAttr("--externalDownloader", cli.switches.Set("aria2", "curl"), default=None, help="Set it to generate a cli command to download the stuff")
+    streamsCount=cli.SwitchAttr("--streamsCount", int, default=32, help="Max count of streams for aria2c")
+    
+    def main(self):
+        """Entry-point from setuptools."""
+        signal.signal(signal.SIGINT, lambda *_: getattr(os, '_exit')(0))  # Properly handle Control+C
+        
+        config = self
+        setup_logging(config.verbose, onlyStdErr=bool(self.externalDownloader))
+        try:
+            main(config)
+        except HandledError:
+            if config.exRaise:
+                raise
+            logging.critical('Failure.')
+            sys.exit(0 if config.ignore_errors else 1)
 
 
 if __name__ == '__main__':
-    entry_point()
+    AppCLI.run()
