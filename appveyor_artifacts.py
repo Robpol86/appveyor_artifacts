@@ -498,11 +498,11 @@ class AppCLI(cli.Application):
     owner=cli.SwitchAttr(["o", "owner-name"], argtype=IdentifierValidator, default=None, list=False, argname='NAME', help="Repository owner/account name.", mandatory = True)
     repo=cli.SwitchAttr(["n", "repo-name"], argtype=IdentifierValidator, default=None, list=False, argname='NAME', help="Repository name.", mandatory = True)
     
-    tag=cli.SwitchAttr(["t", "tag-name"], argtype=IdentifierValidator, default=None, list=False, argname='NAME', help="Tag name that triggered current job.", envname="TRAVIS_TAG")
+    tag=cli.SwitchAttr(["t", "tag-name"], argtype=IdentifierValidator, default=None, list=False, argname='NAME', help="Tag name that triggered current job.")
     job_name=cli.SwitchAttr(["N", "job-name"], argtype=str, default=None, list=False, argname='JOB', help="Filter by job name (Python versions, etc).")
-    pull_request=cli.SwitchAttr(["p", "pull-request"], argtype=int, default=None, list=False, argname='NUM', help="Pull request number of current job.", envname="TRAVIS_PULL_REQUEST")
+    pull_request=cli.SwitchAttr(["p", "pull-request"], argtype=int, default=None, list=False, argname='NUM', help="Pull request number of current job.")
     branch=cli.SwitchAttr(["b", "branch"], argtype=CommitValidator, default=None, list=False, argname='SHA', help="Filter by branch")
-    commit=cli.SwitchAttr(["c", "commit"], argtype=CommitValidator, default=None, list=False, argname='SHA', help="Git commit currently building.", envname="TRAVIS_COMMIT")
+    commit=cli.SwitchAttr(["c", "commit"], argtype=CommitValidator, default=None, list=False, argname='SHA', help="Git commit currently building.")
     
     mangle_coverage=cli.Flag(["m", "mangle-coverage"], help = "Edit downloaded .coverage file(s) replacing Windows paths with Linux paths.")
     dir=cli.SwitchAttr(["C", "dir"], argtype=cli.switches.MakeDirectory, default=".", list=False, argname='DIR', help="Download to DIR instead of cwd.")
@@ -516,10 +516,6 @@ class AppCLI(cli.Application):
     def main(self):
         """Entry-point from setuptools."""
         signal.signal(signal.SIGINT, lambda *_: getattr(os, '_exit')(0))  # Properly handle Control+C
-        
-        if os.environ.get('TRAVIS') == 'true':
-            self.owner = os.environ.get('TRAVIS_REPO_SLUG', '/').split('/')[0]
-            self.repo = os.environ.get('TRAVIS_REPO_SLUG', '/').split('/')[1].replace('_', '-')
         
         config = self
         setup_logging(config.verbose)
